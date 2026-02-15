@@ -39,5 +39,7 @@ jobs:
           git clone https://github.com/hybridgroup/gocv.git
           cd gocv
 
+          sed -i 's/sudo //g' Makefile
+
           make install_raspi BUILD_SHARED_LIBS=OFF
 
