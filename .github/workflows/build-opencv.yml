@@ -4,8 +4,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-opencv:
-    runs-on: ubuntu-24.04
+  build:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: ghcr.io/saurabh-git-dev/raspberrypi-os:python3.10-bookworm
     defaults:
       run:
         shell: bash
