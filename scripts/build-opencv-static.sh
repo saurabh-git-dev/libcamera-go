@@ -87,6 +87,7 @@ cmake_args=(
   -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}"
   -DOPENCV_EXTRA_MODULES_PATH="${SRC_DIR}/opencv_contrib/modules"
   -DBUILD_LIST=core,imgproc,imgcodecs,video
+  -DBUILD_opencv_dnn=OFF
   -DBUILD_SHARED_LIBS=OFF
   -DENABLE_NEON=ON
   -DOPENCV_GENERATE_PKGCONFIG=ON
