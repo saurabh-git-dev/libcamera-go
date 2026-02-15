@@ -32,7 +32,8 @@ jobs:
           apt-get update
           apt-get install -y cmake g++ pkg-config libcamera-dev
 
-      - name: Restore OpenCV cache (required)
+
+      - name: Restore OpenCV cache
         id: restore-opencv-cache
         uses: actions/cache/restore@v4
         with:
@@ -43,7 +44,24 @@ jobs:
             /usr/local/lib/cmake/opencv4
             /usr/local/lib/pkgconfig/opencv4.pc
           key: ${{ env.OPENCV_CACHE_KEY }}-${{ hashFiles('scripts/build-opencv-static.sh') }}
-          fail-on-cache-miss: true
+
+      - name: Build OpenCV static with project script (if cache miss)
+        if: steps.restore-opencv-cache.outputs.cache-hit != 'true'
+        run: |
+          chmod +x ./scripts/build-opencv-static.sh
+          ./scripts/build-opencv-static.sh
+
+      - name: Save OpenCV cache (if just built)
+        if: steps.restore-opencv-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /usr/local/include/opencv4
+            /usr/local/lib/libopencv*.a
+            /usr/local/lib/opencv4
+            /usr/local/lib/cmake/opencv4
+            /usr/local/lib/pkgconfig/opencv4.pc
+          key: ${{ env.OPENCV_CACHE_KEY }}-${{ hashFiles('scripts/build-opencv-static.sh') }}
 
       - name: Build app binary with local script
         run: |
