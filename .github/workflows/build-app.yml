@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     container:
       image: ghcr.io/saurabh-git-dev/raspberrypi-os:python3.10-bookworm
+    defaults:
+      run:
+        shell: bash
     env:
       OPENCV_VERSION: 4.13.0
       OPENCV_INSTALL_PREFIX: /usr/local
