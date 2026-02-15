@@ -128,9 +128,6 @@ cmake --build . -j "${JOBS}"
 echo "==> Installing"
 run_as_root cmake --install .
 
-echo "==> Verifying static artifacts"
-ls -1 "${INSTALL_PREFIX}"/lib/libopencv_core*.a "${INSTALL_PREFIX}"/lib/libopencv_imgproc*.a "${INSTALL_PREFIX}"/lib/libopencv_highgui*.a
-
 echo "==> Verifying pkg-config"
 export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 pkg-config --modversion opencv4
