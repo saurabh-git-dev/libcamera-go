@@ -46,5 +46,7 @@ jobs:
           cache: true
 
       - name: Build OpenCV
-        run: make install_raspi BUILD_SHARED_LIBS=OFF
+        run: |
+          cd gocv
+          make install_raspi BUILD_SHARED_LIBS=OFF
 
