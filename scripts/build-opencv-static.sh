@@ -70,14 +70,14 @@ elif [[ "${FORCE_CLEAN}" == "1" ]]; then
   git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv.git
 fi
 
-if [[ ! -d "opencv_contrib" ]]; then
-  echo "==> Cloning OpenCV contrib"
-  git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
-elif [[ "${FORCE_CLEAN}" == "1" ]]; then
-  echo "==> Refreshing OpenCV contrib source"
-  rm -rf opencv_contrib
-  git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
-fi
+# if [[ ! -d "opencv_contrib" ]]; then
+#   echo "==> Cloning OpenCV contrib"
+#   git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
+# elif [[ "${FORCE_CLEAN}" == "1" ]]; then
+#   echo "==> Refreshing OpenCV contrib source"
+#   rm -rf opencv_contrib
+#   git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
+# fi
 
 echo "==> Configuring CMake"
 cd "${BUILD_DIR}"
@@ -85,7 +85,7 @@ cmake_args=(
   ../src/opencv
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}"
-  -DOPENCV_EXTRA_MODULES_PATH="${SRC_DIR}/opencv_contrib/modules"
+  # -DOPENCV_EXTRA_MODULES_PATH="${SRC_DIR}/opencv_contrib/modules"
   -DBUILD_LIST=core,imgproc,imgcodecs,video
   -DBUILD_opencv_dnn=OFF
   -DBUILD_SHARED_LIBS=OFF
@@ -137,7 +137,3 @@ pkg-config --modversion opencv4
 pkg-config --libs --static opencv4
 
 echo "==> Done"
-echo "Use scripts/build-app-static-opencv.sh to build this project with static OpenCV linking."
-if [[ "${DISABLE_GUI_VIDEO_BACKENDS}" == "1" ]]; then
-  echo "Hint: for full-static OpenCV attempt, run app build with OPENCV_DYNAMIC_MODULES=\"\"."
-fi
