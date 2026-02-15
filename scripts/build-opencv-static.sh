@@ -14,6 +14,18 @@ WORK_DIR="${BUILD_ROOT}/opencv-${OPENCV_VERSION}"
 SRC_DIR="${WORK_DIR}/src"
 BUILD_DIR="${WORK_DIR}/build"
 
+run_as_root() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    echo "ERROR: root privileges required to run: $*" >&2
+    echo "Run as root or install sudo." >&2
+    exit 1
+  fi
+}
+
 echo "==> Building OpenCV ${OPENCV_VERSION} static libraries"
 echo "    install prefix: ${INSTALL_PREFIX}"
 echo "    work dir:       ${WORK_DIR}"
@@ -28,14 +40,14 @@ fi
 if [[ "${INSTALL_DEPS}" == "1" ]]; then
   if command -v apt-get >/dev/null 2>&1; then
     echo "==> Installing build dependencies (apt)"
-    sudo apt-get update
+    run_as_root apt-get update
     if [[ "${DISABLE_GUI_VIDEO_BACKENDS}" == "1" ]]; then
-      sudo apt-get install -y \
+      run_as_root apt-get install -y \
         build-essential cmake pkg-config curl ca-certificates git \
         libjpeg-dev libpng-dev libtiff-dev libopenexr-dev \
         libtbb-dev
     else
-      sudo apt-get install -y \
+      run_as_root apt-get install -y \
         build-essential cmake pkg-config curl ca-certificates git \
         libgtk2.0-dev libavcodec-dev libavformat-dev libswscale-dev \
         libjpeg-dev libpng-dev libtiff-dev libopenexr-dev \
@@ -114,7 +126,7 @@ echo "==> Building"
 cmake --build . -j "${JOBS}"
 
 echo "==> Installing"
-sudo cmake --install .
+run_as_root cmake --install .
 
 echo "==> Verifying static artifacts"
 ls -1 "${INSTALL_PREFIX}"/lib/libopencv_core*.a "${INSTALL_PREFIX}"/lib/libopencv_imgproc*.a "${INSTALL_PREFIX}"/lib/libopencv_highgui*.a
