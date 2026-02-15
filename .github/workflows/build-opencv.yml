@@ -34,12 +34,17 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-opencv-static-${{ env.OPENCV_VERSION }}-v1
 
       - name: Build and install OpenCV static
-        if: steps.cache-opencv-static.outputs.cache-hit != 'true'
         run: |
           git clone https://github.com/hybridgroup/gocv.git
           cd gocv
-
           sed -i 's/sudo //g' Makefile
 
-          make install_raspi BUILD_SHARED_LIBS=OFF
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: gocv/go.mod
+          cache: true
+
+      - name: Build OpenCV
+        run: make install_raspi BUILD_SHARED_LIBS=OFF
 
