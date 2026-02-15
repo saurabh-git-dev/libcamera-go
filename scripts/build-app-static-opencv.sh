@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-OUTPUT_BIN="${OUTPUT_BIN:-libcamera-go-static-opencv}"
+OUTPUT_BIN="${OUTPUT_BIN:-main}"
 OPENCV_PKG="${OPENCV_PKG:-opencv4}"
 INSTALL_PREFIX="${INSTALL_PREFIX:-/usr/local}"
 GO_TAGS="${GO_TAGS:-customenv}"

@@ -45,7 +45,19 @@ jobs:
           echo "Checking installed libcamera libraries..."
           ldconfig -p | grep libcamera
 
+      - name: Restore OpenCV static cache
+        id: cache-opencv-static
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/include/opencv4
+            /usr/local/lib/pkgconfig/opencv4.pc
+            /usr/local/lib/libopencv*.a
+            /usr/local/lib/opencv4
+          key: ${{ runner.os }}-${{ runner.arch }}-opencv-static-${{ env.OPENCV_VERSION }}-v1
+
       - name: Build and install OpenCV static
+        if: steps.cache-opencv-static.outputs.cache-hit != 'true'
         run: |
           set -euxo pipefail
           mkdir -p /tmp/opencv-src /tmp/opencv-build
@@ -71,6 +83,14 @@ jobs:
 
           cmake --build . -j"$(nproc)"
           cmake --install .
+
+      - name: Cache status
+        run: |
+          if [[ "${{ steps.cache-opencv-static.outputs.cache-hit }}" == "true" ]]; then
+            echo "OpenCV static cache hit: skipping rebuild"
+          else
+            echo "OpenCV static cache miss: built and installed OpenCV"
+          fi
 
       - name: Validate OpenCV static pkg-config
         run: |
