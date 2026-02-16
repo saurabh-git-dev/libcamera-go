@@ -11,44 +11,42 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      OPENCV_VERSION: 4.13.0
-      INSTALL_PREFIX: /usr/local
-      BUILD_ROOT: /tmp/opencv-static-build
-      DISABLE_GUI_VIDEO_BACKENDS: 1
-      INSTALL_DEPS: 1
-      FORCE_CLEAN: 1
-      OPENCV_CACHE_KEY: ubuntu-24.04-opencv-static-4.13.0-guioff-1
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Restore OpenCV cache
-        id: restore-opencv-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            /usr/local/include/opencv4
-            /usr/local/lib/libopencv*.a
-            /usr/local/lib/opencv4
-            /usr/local/lib/cmake/opencv4
-            /usr/local/lib/pkgconfig/opencv4.pc
-          key: ${{ env.OPENCV_CACHE_KEY }}-${{ hashFiles('scripts/build-opencv-static.sh') }}
-
-      - name: Build OpenCV static with project script
-        if: steps.restore-opencv-cache.outputs.cache-hit != 'true'
+      - name: Install dependencies
         run: |
-          chmod +x ./scripts/build-opencv-static.sh
-          ./scripts/build-opencv-static.sh
-
-      - name: Save OpenCV cache
-        if: steps.restore-opencv-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+          apt-get update
+          apt-get install -y \
+            cmake g++ pkg-config git ca-certificates curl \
+            build-essential libgtk2.0-dev libavcodec-dev libavformat-dev libswscale-dev \
+            libavutil-dev libswresample-dev libavfilter-dev libavdevice-dev \
+            libjpeg-dev libpng-dev libtiff-dev libopenexr-dev libtbb-dev \
+            libv4l-dev libxvidcore-dev libx264-dev
+          
+      - name: Restore OpenCV static cache
+        id: cache-opencv-static
+        uses: actions/cache@v4
         with:
           path: |
             /usr/local/include/opencv4
+            /usr/local/lib/pkgconfig/opencv4.pc
             /usr/local/lib/libopencv*.a
             /usr/local/lib/opencv4
-            /usr/local/lib/cmake/opencv4
-            /usr/local/lib/pkgconfig/opencv4.pc
-          key: ${{ steps.restore-opencv-cache.outputs.cache-primary-key }}
+          key: ${{ runner.os }}-${{ runner.arch }}-opencv-static-${{ env.OPENCV_VERSION }}-v1
+
+      - name: Build and install OpenCV static
+        run: |
+          git clone https://github.com/hybridgroup/gocv.git
+          cd gocv
+          sed -i 's/sudo //g' Makefile
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: gocv/go.mod
+          cache: true
+
+      - name: Build OpenCV
+        run: |
+          cd gocv
+          make install_raspi BUILD_SHARED_LIBS=OFF
+

@@ -1,4 +1,4 @@
-name: Build App Binary
+name: Build App
 
 on:
   push:
@@ -17,59 +17,231 @@ jobs:
         shell: bash
     env:
       OPENCV_VERSION: 4.13.0
-      INSTALL_PREFIX: /usr/local
-      BUILD_ROOT: /tmp/opencv-static-build
-      DISABLE_GUI_VIDEO_BACKENDS: 1
-      INSTALL_DEPS: 1
-      FORCE_CLEAN: 1
-      OPENCV_CACHE_KEY: ubuntu-24.04-opencv-static-4.13.0-guioff-1
+      OPENCV_INSTALL_PREFIX: /usr/local
+      OPENCV_DYNAMIC_MODULES: highgui,videoio
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install app build dependencies
+      - name: Configure git safe directory
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y cmake g++ pkg-config libcamera-dev
+          apt-get install -y \
+            cmake g++ pkg-config libcamera-dev git ca-certificates curl \
+            build-essential libgtk2.0-dev libavcodec-dev libavformat-dev libswscale-dev \
+            libavutil-dev libswresample-dev libavfilter-dev libavdevice-dev \
+            libjpeg-dev libpng-dev libtiff-dev libopenexr-dev libtbb-dev \
+            libv4l-dev libxvidcore-dev libx264-dev
+          
+      - name: Check libcamera version
+        run: |
+          set -e
+          echo "Checking libcamera version..."
+          pkg-config --modversion libcamera
+          echo "Checking installed libcamera libraries..."
+          ldconfig -p | grep libcamera
 
-
-      - name: Restore OpenCV cache
-        id: restore-opencv-cache
-        uses: actions/cache/restore@v4
+      - name: Restore OpenCV static cache
+        id: cache-opencv-static
+        uses: actions/cache@v4
         with:
           path: |
             /usr/local/include/opencv4
+            /usr/local/lib/pkgconfig/opencv4.pc
             /usr/local/lib/libopencv*.a
             /usr/local/lib/opencv4
-            /usr/local/lib/cmake/opencv4
-            /usr/local/lib/pkgconfig/opencv4.pc
-          key: ${{ env.OPENCV_CACHE_KEY }}-${{ hashFiles('scripts/build-opencv-static.sh') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-opencv-static-${{ env.OPENCV_VERSION }}-v1
 
-      - name: Build OpenCV static with project script (if cache miss)
-        if: steps.restore-opencv-cache.outputs.cache-hit != 'true'
+      - name: Build and install OpenCV static
+        if: steps.cache-opencv-static.outputs.cache-hit != 'true'
         run: |
-          chmod +x ./scripts/build-opencv-static.sh
-          ./scripts/build-opencv-static.sh
+          set -euxo pipefail
+          mkdir -p /tmp/opencv-src /tmp/opencv-build
+          cd /tmp/opencv-src
 
-      - name: Save OpenCV cache (if just built)
-        if: steps.restore-opencv-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            /usr/local/include/opencv4
-            /usr/local/lib/libopencv*.a
-            /usr/local/lib/opencv4
-            /usr/local/lib/cmake/opencv4
-            /usr/local/lib/pkgconfig/opencv4.pc
-          key: ${{ env.OPENCV_CACHE_KEY }}-${{ hashFiles('scripts/build-opencv-static.sh') }}
+          git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv.git
+          git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
 
-      - name: Build app binary with local script
+          cd /tmp/opencv-build
+          cmake /tmp/opencv-src/opencv \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${OPENCV_INSTALL_PREFIX}" \
+            -DOPENCV_EXTRA_MODULES_PATH=/tmp/opencv-src/opencv_contrib/modules \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DOPENCV_GENERATE_PKGCONFIG=ON \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_PERF_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_opencv_apps=OFF \
+            -DBUILD_JAVA=OFF \
+            -DBUILD_opencv_python3=OFF \
+            -DBUILD_opencv_python2=OFF
+
+          cmake --build . -j"$(nproc)"
+          cmake --install .
+
+      - name: Cache status
         run: |
-          chmod +x ./scripts/build-app-local.sh
-          ./scripts/build-app-local.sh
+          if [[ "${{ steps.cache-opencv-static.outputs.cache-hit }}" == "true" ]]; then
+            echo "OpenCV static cache hit: skipping rebuild"
+          else
+            echo "OpenCV static cache miss: built and installed OpenCV"
+          fi
+
+      - name: Validate OpenCV static pkg-config
+        run: |
+          set -e
+          export PKG_CONFIG_PATH="${OPENCV_INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          pkg-config --modversion opencv4
+          pkg-config --libs --static opencv4
+          ls -l "${OPENCV_INSTALL_PREFIX}"/lib/libopencv_core*.a
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Build binary (OpenCV static, libcamera dynamic)
+        run: |
+          set -euxo pipefail
+          export PKG_CONFIG_PATH="${OPENCV_INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          export CGO_CPPFLAGS="$(pkg-config --cflags opencv4)"
+          export CGO_CXXFLAGS="${CGO_CPPFLAGS}"
+
+          opencv_libs="$(pkg-config --libs opencv4)"
+          opencv_libs="$(echo "${opencv_libs}" | xargs)"
+
+          IFS=',' read -r -a dynamic_modules <<< "${OPENCV_DYNAMIC_MODULES}"
+          static_opencv_tokens=""
+          dynamic_opencv_tokens=""
+          for token in ${opencv_libs}; do
+            case "${token}" in
+              -lopencv_*)
+                module_name="${token#-lopencv_}"
+                force_dynamic=0
+                for dm in "${dynamic_modules[@]}"; do
+                  if [[ "${module_name}" == "${dm}" ]]; then
+                    force_dynamic=1
+                    break
+                  fi
+                done
+                if [[ ${force_dynamic} -eq 1 ]]; then
+                  dynamic_opencv_tokens+="${token} "
+                else
+                  static_opencv_tokens+="${token} "
+                fi
+                ;;
+              *)
+                static_opencv_tokens+="${token} "
+                ;;
+            esac
+          done
+
+          opencv_static_all="$(pkg-config --libs --static opencv4)"
+          opencv_static_all="${opencv_static_all//-lIconv::Iconv/}"
+          opencv_static_all="$(echo "${opencv_static_all}" | xargs)"
+
+          search_paths=()
+          for token in ${opencv_static_all}; do
+            case "${token}" in
+              -L*)
+                search_paths+=("${token#-L}")
+                ;;
+            esac
+          done
+          search_paths+=(/usr/lib /usr/local/lib /lib)
+          always_dynamic_libs="m pthread rt dl c gcc gcc_s stdc++"
+
+          static_tokens=""
+          dynamic_tokens=""
+          for token in ${opencv_static_all}; do
+            case "${token}" in
+              -lopencv_*)
+                ;;
+              -lIconv::Iconv)
+                ;;
+              -l*)
+                lib_name="${token#-l}"
+                for adl in ${always_dynamic_libs}; do
+                  if [[ "${lib_name}" == "${adl}" ]]; then
+                    dynamic_tokens+="${token} "
+                    continue 2
+                  fi
+                done
+                static_found=0
+                for libdir in "${search_paths[@]}"; do
+                  if [[ -f "${libdir}/lib${lib_name}.a" ]]; then
+                    static_found=1
+                    break
+                  fi
+                done
+                if [[ ${static_found} -eq 1 ]]; then
+                  static_tokens+="${token} "
+                else
+                  if [[ "${token}" == "-lopenjp2" ]]; then
+                    if [[ -f /lib/aarch64-linux-gnu/libopenjp2.so.7 ]]; then
+                      dynamic_tokens+="-l:libopenjp2.so.7 "
+                      continue
+                    fi
+                  fi
+                  dynamic_tokens+="${token} "
+                fi
+                ;;
+              *)
+                static_tokens+="${token} "
+                dynamic_tokens+="${token} "
+                ;;
+            esac
+          done
+
+          static_opencv_tokens="$(echo "${static_opencv_tokens}" | xargs)"
+          dynamic_opencv_tokens="$(echo "${dynamic_opencv_tokens}" | xargs)"
+          static_tokens="$(echo "${static_tokens}" | xargs)"
+          dynamic_tokens="$(echo "${dynamic_tokens}" | xargs)"
+          extra_dynamic="-l:liblzma.so.5 -l:libbz2.so.1.0 -l:libzstd.so.1 -l:libLerc.so.4 -l:libjbig.so.0 -l:libdeflate.so.0 -l:libbrotlidec.so.1 -l:libbrotlicommon.so.1"
+          media_ui_dynamic=""
+          for dep_pkg in \
+            gtk+-2.0 gdk-2.0 glib-2.0 gobject-2.0 gthread-2.0 \
+            libavcodec libavformat libavutil libswscale libswresample libavfilter libavdevice \
+            gstreamer-1.0 gstreamer-base-1.0 gstreamer-app-1.0 gstreamer-video-1.0 gstreamer-audio-1.0 \
+            gstreamer-pbutils-1.0 gstreamer-riff-1.0; do
+            if pkg-config --exists "${dep_pkg}"; then
+              media_ui_dynamic+="$(pkg-config --libs "${dep_pkg}") "
+            fi
+          done
+          media_ui_dynamic="$(echo "${media_ui_dynamic}" | xargs)"
+
+          export CGO_LDFLAGS="-Wl,-Bstatic -Wl,--start-group ${static_opencv_tokens} ${static_tokens} -Wl,--end-group -Wl,-Bdynamic ${dynamic_opencv_tokens} ${dynamic_tokens} ${media_ui_dynamic} ${extra_dynamic}"
+
+          go build -v -buildvcs=false -tags customenv -o libcamera-go-static-opencv .
+
+      - name: Verify linkage
+        run: |
+          set -euxo pipefail
+          ldd ./libcamera-go-static-opencv | tee ldd.txt
+
+          if ! grep -Eiq 'libopencv_(highgui|videoio).*\.so' ldd.txt; then
+            echo "Expected hybrid link: libopencv_highgui/libopencv_videoio should be dynamic" >&2
+            exit 1
+          fi
+
+          if ! grep -Eiq 'libcamera\.so' ldd.txt; then
+            echo "libcamera is not dynamically linked as expected" >&2
+            exit 1
+          fi
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libcamera-recorder
-          path: libcamera-recorder
+          name: libcamera-go-static-opencv
+          path: |
+            libcamera-go-static-opencv
+            ldd.txt
