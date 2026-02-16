@@ -31,4 +31,4 @@ OPENCV_STATIC_LIBS="-L/usr/local/lib \
 
 RUNTIME_DYNAMIC_LIBS="-lcamera -lcamera-base"
 
-go build -tags="customenv gocv_specific_modules gocv_video" -ldflags "-extldflags '-Wl,-Bstatic ${OPENCV_STATIC_LIBS} -Wl,-Bdynamic ${RUNTIME_DYNAMIC_LIBS}'" "$@"
+go build -buildvcs=false -tags="customenv gocv_specific_modules gocv_video" -ldflags "-extldflags '-Wl,-Bstatic ${OPENCV_STATIC_LIBS} -Wl,-Bdynamic ${RUNTIME_DYNAMIC_LIBS}'" "$@"
