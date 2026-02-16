@@ -13,14 +13,22 @@ OPENCV_STATIC_LIBS="-L/usr/local/lib \
 -lopencv_imgcodecs \
 -lopencv_imgproc \
 -lopencv_core \
--L/usr/local/lib/opencv4/3rdparty \
--lz \
--lpng \
--ljpeg \
+-lopencv_video
+-L/usr/local/lib/opencv4/3rdparty/ \
+-littnotify
 -ldl \
 -lm \
--lpthread"
+-lpthread \
+-lrt \
+-ltegra_hal \
+-lkleidicv_hal \
+-lkleidicv_thread \
+-lkleidicv \
+-llibjpeg-turbo \
+-llibpng \
+-lz \
+"
 
 RUNTIME_DYNAMIC_LIBS="-lcamera -lcamera-base"
 
-go build -tags customenv -ldflags "-extldflags '-Wl,-Bstatic ${OPENCV_STATIC_LIBS} -Wl,-Bdynamic ${RUNTIME_DYNAMIC_LIBS}'" "$@"
+go build -tags="customenv gocv_specific_modules gocv_video" -ldflags "-extldflags '-Wl,-Bstatic ${OPENCV_STATIC_LIBS} -Wl,-Bdynamic ${RUNTIME_DYNAMIC_LIBS}'" "$@"

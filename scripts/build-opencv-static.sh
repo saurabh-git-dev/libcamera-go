@@ -14,6 +14,18 @@ WORK_DIR="${BUILD_ROOT}/opencv-${OPENCV_VERSION}"
 SRC_DIR="${WORK_DIR}/src"
 BUILD_DIR="${WORK_DIR}/build"
 
+run_as_root() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    echo "ERROR: root privileges required to run: $*" >&2
+    echo "Run as root or install sudo." >&2
+    exit 1
+  fi
+}
+
 echo "==> Building OpenCV ${OPENCV_VERSION} static libraries"
 echo "    install prefix: ${INSTALL_PREFIX}"
 echo "    work dir:       ${WORK_DIR}"
@@ -28,14 +40,14 @@ fi
 if [[ "${INSTALL_DEPS}" == "1" ]]; then
   if command -v apt-get >/dev/null 2>&1; then
     echo "==> Installing build dependencies (apt)"
-    sudo apt-get update
+    run_as_root apt-get update
     if [[ "${DISABLE_GUI_VIDEO_BACKENDS}" == "1" ]]; then
-      sudo apt-get install -y \
+      run_as_root apt-get install -y \
         build-essential cmake pkg-config curl ca-certificates git \
         libjpeg-dev libpng-dev libtiff-dev libopenexr-dev \
         libtbb-dev
     else
-      sudo apt-get install -y \
+      run_as_root apt-get install -y \
         build-essential cmake pkg-config curl ca-certificates git \
         libgtk2.0-dev libavcodec-dev libavformat-dev libswscale-dev \
         libjpeg-dev libpng-dev libtiff-dev libopenexr-dev \
@@ -58,14 +70,14 @@ elif [[ "${FORCE_CLEAN}" == "1" ]]; then
   git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv.git
 fi
 
-if [[ ! -d "opencv_contrib" ]]; then
-  echo "==> Cloning OpenCV contrib"
-  git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
-elif [[ "${FORCE_CLEAN}" == "1" ]]; then
-  echo "==> Refreshing OpenCV contrib source"
-  rm -rf opencv_contrib
-  git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
-fi
+# if [[ ! -d "opencv_contrib" ]]; then
+#   echo "==> Cloning OpenCV contrib"
+#   git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
+# elif [[ "${FORCE_CLEAN}" == "1" ]]; then
+#   echo "==> Refreshing OpenCV contrib source"
+#   rm -rf opencv_contrib
+#   git clone --branch "${OPENCV_VERSION}" --depth 1 https://github.com/opencv/opencv_contrib.git
+# fi
 
 echo "==> Configuring CMake"
 cd "${BUILD_DIR}"
@@ -73,8 +85,9 @@ cmake_args=(
   ../src/opencv
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}"
-  -DOPENCV_EXTRA_MODULES_PATH="${SRC_DIR}/opencv_contrib/modules"
+  # -DOPENCV_EXTRA_MODULES_PATH="${SRC_DIR}/opencv_contrib/modules"
   -DBUILD_LIST=core,imgproc,imgcodecs,video
+  -DBUILD_opencv_dnn=OFF
   -DBUILD_SHARED_LIBS=OFF
   -DENABLE_NEON=ON
   -DOPENCV_GENERATE_PKGCONFIG=ON
@@ -105,6 +118,9 @@ if [[ "${DISABLE_GUI_VIDEO_BACKENDS}" == "1" ]]; then
     -DWITH_JASPER=OFF
     -DWITH_OPENJPEG=OFF
     -DWITH_OPENEXR=OFF
+    -DWITH_PROTOBUF=OFF
+    -DBUILD_PROTOBUF=OFF
+    -DWITH_ADE=OFF
   )
 fi
 
@@ -114,10 +130,7 @@ echo "==> Building"
 cmake --build . -j "${JOBS}"
 
 echo "==> Installing"
-sudo cmake --install .
-
-echo "==> Verifying static artifacts"
-ls -1 "${INSTALL_PREFIX}"/lib/libopencv_core*.a "${INSTALL_PREFIX}"/lib/libopencv_imgproc*.a "${INSTALL_PREFIX}"/lib/libopencv_highgui*.a
+run_as_root cmake --install .
 
 echo "==> Verifying pkg-config"
 export PKG_CONFIG_PATH="${INSTALL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
@@ -125,7 +138,3 @@ pkg-config --modversion opencv4
 pkg-config --libs --static opencv4
 
 echo "==> Done"
-echo "Use scripts/build-app-static-opencv.sh to build this project with static OpenCV linking."
-if [[ "${DISABLE_GUI_VIDEO_BACKENDS}" == "1" ]]; then
-  echo "Hint: for full-static OpenCV attempt, run app build with OPENCV_DYNAMIC_MODULES=\"\"."
-fi
