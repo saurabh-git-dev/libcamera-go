@@ -32,6 +32,11 @@ jobs:
           apt-get update
           apt-get install -y cmake g++ pkg-config libcamera-dev
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
       - name: Restore OpenCV cache
         id: restore-opencv-cache
